@@ -1,0 +1,92 @@
+name: Build Arno Link APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create the Android project
+        run: |
+          flutter create --platforms=android --project-name arno_link --org com.arnod tmp_app
+          cp -r tmp_app/android ./android
+          rm -rf tmp_app
+
+      - name: Name, permissions and Android version
+        run: |
+          python3 - <<'PY'
+          import glob, re
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          perms = '''
+              <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+              <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+              <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+              <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+              <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+              <queries><intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent></queries>
+              <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
+          '''
+          s = s.replace('<application', perms + '\n    <application', 1)
+          svc = '''
+              <service android:name=".NotifService" android:label="Arno Link" android:exported="true" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+                  <intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter>
+              </service>
+          '''
+          s = s.replace('</application>', svc + '\n    </application>', 1)
+          s = re.sub(r'android:label="[^"]*"', 'android:label="Arno Link"', s, count=1)
+          s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+          open(p, 'w').write(s)
+          for g in glob.glob('android/app/build.gradle*'):
+              t = open(g).read()
+              t = t.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24').replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 24')
+              open(g, 'w').write(t)
+          kts = '\nsubprojects {\n    val fixSdk = { p: Project -> p.extensions.findByName("android")?.withGroovyBuilder { "compileSdkVersion"(36) } }\n    if (state.executed) { fixSdk(this) } else { afterEvaluate { fixSdk(this) } }\n}\n'
+          grv = "\nsubprojects {\n    def fixSdk = { p -> if (p.hasProperty('android')) { p.android.compileSdkVersion 36 } }\n    if (state.executed) { fixSdk(it) } else { afterEvaluate { fixSdk(it) } }\n}\n"
+          for f, snip in (('android/build.gradle.kts', kts), ('android/build.gradle', grv)):
+              try:
+                  t = open(f).read(); open(f, 'w').write(t + snip); print('sdk patch ->', f)
+              except FileNotFoundError:
+                  pass
+          print('patched')
+          PY
+
+      - name: Add native code (media keys + notifications)
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/arnod/arno_link
+          rm -f android/app/src/main/kotlin/com/arnod/arno_link/MainActivity.kt
+          cp MainActivity.kt android/app/src/main/kotlin/com/arnod/arno_link/MainActivity.kt
+          cp NotifService.kt android/app/src/main/kotlin/com/arnod/arno_link/NotifService.kt
+
+      - run: flutter pub get
+      - run: dart run flutter_launcher_icons
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArnoLink-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
