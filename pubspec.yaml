@@ -1,0 +1,31 @@
+name: arno_link
+description: Arno Link - web + Bluetooth control for the ARNO OS Desk Buddy. Created By- Arnod
+publish_to: "none"
+version: 4.0.0+4
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_blue_plus: ^1.32.0
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.2.0
+  webview_flutter: ^4.9.0
+  file_picker: ^8.1.2
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
+  min_sdk_android: 24
