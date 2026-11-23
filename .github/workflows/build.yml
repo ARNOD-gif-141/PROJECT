@@ -65,8 +65,8 @@ jobs:
               t = open(g).read()
               t = t.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24').replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 24')
               open(g, 'w').write(t)
-          kts = '\nsubprojects {\n    val fixSdk = { p: Project -> p.extensions.findByName("android")?.withGroovyBuilder { "compileSdkVersion"(36) } }\n    if (state.executed) { fixSdk(this) } else { afterEvaluate { fixSdk(this) } }\n}\n'
-          grv = "\nsubprojects {\n    def fixSdk = { p -> if (p.hasProperty('android')) { p.android.compileSdkVersion 36 } }\n    if (state.executed) { fixSdk(it) } else { afterEvaluate { fixSdk(it) } }\n}\n"
+          kts = '\nsubprojects {\n    val fixSdk = { p: Project -> p.extensions.findByName("android")?.withGroovyBuilder { "compileSdkVersion"(36) } }\n    if (state.executed) { fixSdk(this) } else { afterEvaluate { fixSdk(this) } }\n    tasks.configureEach { if (name.startsWith("lint")) { enabled = false } }\n}\n'
+          grv = "\nsubprojects {\n    def fixSdk = { p -> if (p.hasProperty('android')) { p.android.compileSdkVersion 36 } }\n    if (state.executed) { fixSdk(it) } else { afterEvaluate { fixSdk(it) } }\n    tasks.configureEach { t -> if (t.name.startsWith('lint')) { t.enabled = false } }\n}\n"
           for f, snip in (('android/build.gradle.kts', kts), ('android/build.gradle', grv)):
               try:
                   t = open(f).read(); open(f, 'w').write(t + snip); print('sdk patch ->', f)
