@@ -77,6 +77,9 @@ class Link extends ChangeNotifier {
     notifyListeners();
   }
   Future<bool> openApp(String n) async { try { return (await native.invokeMethod('openApp', {'name': n})) == true; } catch (_) { return false; } }
+  bool finding = false; Timer? _findT;
+  Future<void> findStart() async { finding = true; notifyListeners(); try { await native.invokeMethod('findStart'); } catch (_) {} _findT?.cancel(); _findT = Timer(const Duration(seconds: 90), findStop); }
+  Future<void> findStop() async { finding = false; _findT?.cancel(); notifyListeners(); try { await native.invokeMethod('findStop'); } catch (_) {} if (connected) send('FIND|0'); }
   Future<void> openOverlaySettings() async { try { await native.invokeMethod('openOverlay'); } catch (_) {} }
   Future<String> usePhoneLocation() async {
     try {
@@ -228,6 +231,7 @@ class Link extends ChangeNotifier {
     switch (p[0]) {
       case 'I': info[p[1]] = p.length > 2 ? p.sublist(2).join('|') : ''; break;
       case 'S': if (p[1] == 'cd') _toast('Timer completed', 'Your timer on the Desk Buddy is done.'); break;
+      case 'FIND': { if (p.length > 1 && p[1] == '1') { findStart(); } else { finding = false; _findT?.cancel(); notifyListeners(); native.invokeMethod('findStop').catchError((_) {}); } break; }
       case 'OPEN': { final nm = p.sublist(1).join('|'); openApp(nm).then((ok) { if (!ok) send('T|App not found: ' + nm); }); break; }
       case 'AI': { final a = p.sublist(1).join('|'); if (aiLog.isNotEmpty) { aiLog.last[1] = a; } else { aiLog.add(['', a]); } break; }
       case 'G': lastMsg = p.sublist(1).join('|'); _toast('Desk Buddy', lastMsg); break;
@@ -281,7 +285,7 @@ class Link extends ChangeNotifier {
   void _musicNow() { if (musicTitle.isNotEmpty) _musicSend(''); else send('MU|2|||'); }
 }
 
-const faceNames = ['Normal','Happy','Wink','Shy','Mustache','Bored','Laser Eyes','Hypnotic','Heartbeat','Pac-Man','Space Helmet','Lava Eyes','Panda','Bunny','Owl','Fox','Frog','Penguin','Unicorn','Octopus','Bat','Spider','Pumpkin','Snowman','Dragon','Bubble Gum','Rainbow Smile','Sound Wave','Wizard','Clown','Smiley Spin','Smirk','Winking Heart','Laughing','Crying','Enraged','Mind Blown','Starry Eyed','Thinking','Yawning','Skeptic','Sweating','In Love','Determined','Boo','Silly','Cool','Ninja','Robot','Cat','Nerd','Vampire','Ghost Panic','Angel','Devil','Money Eyes','Alien','Victorious','Teasing','Exhausted','Loading','Glitch','Pixel Heart','Cyber Shield','Matrix Code','Neon Spiral','Equalizer','Radar','Battery Low','Charging','WiFi Search','Bluetooth','Terminal','Skull','Crosshair','Gamepad','Rocket','Atom','Infinity','Biohazard','Radioactive','Fire','Water Drop','Lightning','Snowflake','Sun Rays','Crescent Moon','Cloud Rain','Wind Gust','Compass','Bullseye','Sleepy','Surprised','Kiss','Dizzy','Party Hat','Pirate','Sick','Coffee','Music Notes'];
+const faceNames = ['Normal','Happy','Wink','Shy','Mustache','Bored','Laser Eyes','Hypnotic','Heartbeat','Pac-Man','Space Helmet','Lava Eyes','Panda','Bunny','Owl','Fox','Frog','Penguin','Unicorn','Octopus','Bat','Spider','Pumpkin','Snowman','Dragon','Bubble Gum','Rainbow Smile','Sound Wave','Wizard','Clown','Smiley Spin','Smirk','Winking Heart','Laughing','Crying','Enraged','Mind Blown','Starry Eyed','Thinking','Yawning','Skeptic','Sweating','In Love','Determined','Boo','Silly','Cool','Ninja','Robot','Cat','Nerd','Vampire','Ghost Panic','Angel','Devil','Money Eyes','Alien','Victorious','Teasing','Exhausted','Loading','Glitch','Pixel Heart','Cyber Shield','Matrix Code','Neon Spiral','Equalizer','Radar','Battery Low','Charging','WiFi Search','Bluetooth','Terminal','Skull','Crosshair','Gamepad','Rocket','Atom','Infinity','Biohazard','Radioactive','Fire','Water Drop','Lightning','Snowflake','Sun Rays','Crescent Moon','Cloud Rain','Wind Gust','Compass','Bullseye','Sleepy','Surprised','Kiss','Dizzy','Party Hat','Pirate','Sick','Coffee','Music Notes','My Face'];
 
 final link = Link();
 final accent = ValueNotifier<int>(0xFF1FB5C9);
@@ -387,14 +391,22 @@ class _ControlTabState extends State<ControlTab> {
           ]),
           if (link.connected) Padding(padding: const EdgeInsets.only(top: 8), child: Text('User: ${link.info['user'] ?? '-'}  FW: ${link.info['fw'] ?? '-'}  WiFi: ${link.info['wifi'] ?? '-'}', style: const TextStyle(fontSize: 12))),
         ]),
+        if (link.finding) Card(color: Colors.red.shade700, child: ListTile(leading: const Icon(Icons.notifications_active, color: Colors.white), title: const Text('Your phone is ringing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), trailing: FilledButton(onPressed: link.findStop, child: const Text('Stop')))),
+        card('Find my phone and My face', [
+          Wrap(children: [
+            Padding(padding: const EdgeInsets.only(right: 8), child: FilledButton.icon(onPressed: link.finding ? link.findStop : link.findStart, icon: Icon(link.finding ? Icons.stop : Icons.ring_volume), label: Text(link.finding ? 'Stop ringing' : 'Ring this phone'))),
+            Padding(padding: const EdgeInsets.only(right: 8), child: FilledButton.tonalIcon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FaceEditor())), icon: const Icon(Icons.brush), label: const Text('Face editor'))),
+          ]),
+          const Text('Tap the Desk Buddy pad 7 times (or ask Buddy AI: "find my phone") and this phone rings loudly. No password needed. Tap 7 again to stop.', style: TextStyle(fontSize: 12)),
+        ]),
         card('Screens', [Wrap(children: [
           cmdBtn('Time', 'MTIME'), cmdBtn('Weather', 'MWEATHER'), cmdBtn('3-day', 'MFORECAST'), cmdBtn('Info', 'MINFO'),
           cmdBtn('Manual', 'MMAN1'), cmdBtn('Music', 'MMUSIC'), cmdBtn('Flip a coin', 'MCOIN'), cmdBtn('Games', 'MMENU'),
           cmdBtn('Stopwatch', 'MSW'), cmdBtn('Sleep', 'MSLEEP'),
         ])]),
         card('Touch pad', [
-          Wrap(children: [for (final n in [1, 2, 3, 4, 5, 6]) cmdBtn('$n tap${n > 1 ? 's' : ''}', 'PAD|R|$n'), cmdBtn('Hold 1s', 'PAD|R|H'), cmdBtn('Hold 3s', 'PAD|R|F'), cmdBtn('Hold 5s', 'PAD|R|L')]),
-          const Text('1 next face, 2 weather, 3 time, 4 manual, 5 music, 6 coin, hold 3s games menu (2 next, 1 pick, 3 quit; 3 taps quit any game)', style: TextStyle(fontSize: 12)),
+          Wrap(children: [for (final n in [1, 2, 3, 4, 5, 6, 7]) cmdBtn('$n tap${n > 1 ? 's' : ''}', 'PAD|R|$n'), cmdBtn('Hold 1s', 'PAD|R|H'), cmdBtn('Hold 3s', 'PAD|R|F'), cmdBtn('Hold 5s', 'PAD|R|L')]),
+          const Text('1 next face, 2 weather, 3 time, 4 manual, 5 music, 6 coin, 7 find my phone, hold 3s = games menu (13 games; 2 next, 1 pick, 3 quit)', style: TextStyle(fontSize: 12)),
         ]),
         card('Timer and stopwatch', [
           Row(children: [
@@ -666,4 +678,122 @@ class _ExtraPageState extends State<ExtraPage> {
   }
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(widget.item['n'] as String)), body: WebViewWidget(controller: wc));
+}
+
+
+// ---------------- custom face editor: paint a 64x32 face, send it to the Desk Buddy (face "My Face", the last one) ----------------
+class FaceEditor extends StatefulWidget {
+  const FaceEditor({super.key});
+  @override
+  State<FaceEditor> createState() => _FaceEditorState();
+}
+class _FaceEditorState extends State<FaceEditor> {
+  static const gw = 64, gh = 32;
+  final List<bool> g = List.filled(gw * gh, false);
+  bool erase = false, mirror = true, sending = false;
+  int brush = 1;
+  @override
+  void initState() {
+    super.initState();
+    final s = link.prefs.getString('cface');
+    if (s != null && s.length == gw * gh) { for (var i = 0; i < s.length; i++) { g[i] = s[i] == '1'; } }
+  }
+  void _store() { link.prefs.setString('cface', g.map((b) => b ? '1' : '0').join()); }
+  void _set(int x, int y, bool v) { if (x >= 0 && x < gw && y >= 0 && y < gh) g[y * gw + x] = v; }
+  void _dot(int cx, int cy) {
+    for (var dy = 0; dy < brush; dy++) {
+      for (var dx = 0; dx < brush; dx++) {
+        _set(cx + dx, cy + dy, !erase);
+        if (mirror) _set(gw - 1 - (cx + dx), cy + dy, !erase);
+      }
+    }
+  }
+  void _paint(Offset p, double cell) { setState(() => _dot((p.dx / cell).floor(), (p.dy / cell).floor())); }
+  void _ell(int cx, int cy, int rx, int ry, {bool fill = true}) {
+    for (var y = -ry; y <= ry; y++) {
+      for (var x = -rx; x <= rx; x++) {
+        final v = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+        if (fill ? v <= 1.0 : (v <= 1.0 && v >= 0.55)) _set(cx + x, cy + y, true);
+      }
+    }
+  }
+  void _preset(int n) {
+    setState(() {
+      g.fillRange(0, g.length, false);
+      if (n == 0) { _ell(19, 13, 6, 8); _ell(45, 13, 6, 8); for (var x = 24; x <= 40; x++) { _set(x, 26, true); _set(x, 27, true); } }
+      if (n == 1) { _ell(19, 13, 6, 8); _ell(45, 13, 6, 8); for (var x = 20; x <= 44; x++) { final y = 21 + ((x - 32) * (x - 32)) ~/ 40; _set(x, y, true); _set(x, y + 1, true); } }
+      if (n == 2) { for (var x = 12; x <= 26; x++) { _set(x, 14, true); _set(x, 15, true); _set(x + 26, 14, true); _set(x + 26, 15, true); } for (var x = 24; x <= 40; x++) { _set(x, 26, true); } }
+    });
+  }
+  String _hex(int chunk) {
+    final sb = StringBuffer();
+    for (var r = chunk * 4; r < chunk * 4 + 4; r++) {
+      for (var b = 0; b < 8; b++) {
+        var v = 0;
+        for (var k = 0; k < 8; k++) { if (g[r * gw + b * 8 + k]) v |= (0x80 >> k); }
+        sb.write(v.toRadixString(16).padLeft(2, '0'));
+      }
+    }
+    return sb.toString();
+  }
+  Future<void> _send() async {
+    if (!link.connected) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to the Desk Buddy first'))); return; }
+    setState(() => sending = true);
+    _store();
+    for (var i = 0; i < 8; i++) { link.send('CF|$i|${_hex(i)}'); await Future.delayed(const Duration(milliseconds: 160)); }
+    if (!mounted) return;
+    setState(() => sending = false);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sent! Your face is the last one (tap the pad to cycle to it)')));
+  }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Face editor')),
+      body: ListView(padding: const EdgeInsets.all(14), children: [
+        LayoutBuilder(builder: (_, c) {
+          final cell = c.maxWidth / gw;
+          return GestureDetector(
+            onPanStart: (d) => _paint(d.localPosition, cell),
+            onPanUpdate: (d) => _paint(d.localPosition, cell),
+            onTapDown: (d) => _paint(d.localPosition, cell),
+            child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CustomPaint(size: Size(c.maxWidth, cell * gh), painter: _GridPainter(List.of(g), cell))),
+          );
+        }),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          ChoiceChip(label: const Text('Draw'), selected: !erase, onSelected: (_) => setState(() => erase = false)),
+          ChoiceChip(label: const Text('Erase'), selected: erase, onSelected: (_) => setState(() => erase = true)),
+          FilterChip(label: const Text('Mirror'), selected: mirror, onSelected: (v) => setState(() => mirror = v)),
+          for (final b in [1, 2, 3]) ChoiceChip(label: Text('Brush $b'), selected: brush == b, onSelected: (_) => setState(() => brush = b)),
+        ]),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          OutlinedButton(onPressed: () => setState(() => g.fillRange(0, g.length, false)), child: const Text('Clear')),
+          OutlinedButton(onPressed: () => setState(() { for (var i = 0; i < g.length; i++) { g[i] = !g[i]; } }), child: const Text('Invert')),
+          OutlinedButton(onPressed: () => _preset(0), child: const Text('Round eyes')),
+          OutlinedButton(onPressed: () => _preset(1), child: const Text('Smile')),
+          OutlinedButton(onPressed: () => _preset(2), child: const Text('Sleepy')),
+        ]),
+        const SizedBox(height: 14),
+        FilledButton.icon(onPressed: sending ? null : _send, icon: const Icon(Icons.send), label: Text(sending ? 'Sending...' : 'Send to Desk Buddy')),
+        const SizedBox(height: 8),
+        const Text('Draw with your finger. Mirror paints both sides at once. The face is saved on the Desk Buddy and appears as the last face ("My Face").', style: TextStyle(fontSize: 12)),
+      ]),
+    );
+  }
+}
+class _GridPainter extends CustomPainter {
+  final List<bool> g; final double cell;
+  _GridPainter(this.g, this.cell);
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.black);
+    final on = Paint()..color = const Color(0xFF9CE8F2);
+    final line = Paint()..color = const Color(0x22FFFFFF)..strokeWidth = 0.5;
+    for (var y = 0; y < 32; y++) { for (var x = 0; x < 64; x++) { if (g[y * 64 + x]) canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell, cell), on); } }
+    for (var x = 0; x <= 64; x += 8) { canvas.drawLine(Offset(x * cell, 0), Offset(x * cell, size.height), line); }
+    for (var y = 0; y <= 32; y += 8) { canvas.drawLine(Offset(0, y * cell), Offset(size.width, y * cell), line); }
+  }
+  @override
+  bool shouldRepaint(covariant _GridPainter o) => true;
 }
