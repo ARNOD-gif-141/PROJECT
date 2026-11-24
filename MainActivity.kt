@@ -4,7 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.RingtoneManager
+import android.os.Vibrator
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
@@ -25,6 +29,29 @@ import io.flutter.plugin.common.MethodChannel
 @Suppress("DEPRECATION")
 class MainActivity : FlutterActivity() {
     private var nid = 100
+    private var findPlayer: MediaPlayer? = null
+    private fun stopFind() {
+        try { findPlayer?.stop() } catch (_: Exception) {}
+        try { findPlayer?.release() } catch (_: Exception) {}
+        findPlayer = null
+        try { (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).cancel() } catch (_: Exception) {}
+    }
+    private fun startFind() {
+        stopFind()
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val mp = MediaPlayer()
+            mp.setDataSource(this, uri)
+            mp.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            mp.isLooping = true
+            mp.prepare()
+            mp.start()
+            findPlayer = mp
+        } catch (_: Exception) {}
+        try { (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).vibrate(longArrayOf(0, 700, 400), 0) } catch (_: Exception) {}
+    }
     private var wifiCb: ConnectivityManager.NetworkCallback? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -66,6 +93,8 @@ class MainActivity : FlutterActivity() {
                     nm.notify(nid++, b.build())
                     result.success(true)
                 }
+                "findStart" -> { startFind(); result.success(true) }
+                "findStop" -> { stopFind(); result.success(true) }
                 "listenerEnabled" -> {
                     val en = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: ""
                     result.success(en.contains(packageName))
